@@ -60,6 +60,7 @@ typedef struct {
     Local<String>* eval;
     useconds_t timeout;
     EvalResult* result;
+    int mem_softlimit_percent;
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
@@ -112,6 +113,21 @@ static void init_v8() {
     platform_lock.unlock();
 }
 
+static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
+    int percent = *(int*) isolate->GetData(2);
+    HeapStatistics* stats = new HeapStatistics();
+    isolate->GetHeapStatistics(stats);
+    float percent_used = ((float)stats->used_heap_size()) / stats->total_heap_size() * 100.0f;
+    fprintf(stderr, "gc callback called\nsize:\t\t%zd\nused:\t\t%zd\navail:\t\t%zd\npercent:\t%f.\n", stats->total_heap_size(), stats->used_heap_size(), stats->total_available_size(), percent_used);
+
+    fprintf(stderr, "percent from isolate data is %d\n", percent);
+    if(percent_used > percent) {
+        fprintf(stderr, "%s\n", "Trying to kill isolate execution");
+        isolate->TerminateExecution();
+        rb_raise(rb_eScriptTerminatedError, "%s", "Script terminated after exceeding memory soft limit.");
+    }
+}
+
 void*
 nogvl_context_eval(void* arg) {
 
@@ -142,6 +158,11 @@ nogvl_context_eval(void* arg) {
 	result->message->Reset(isolate, trycatch.Exception());
     } else {
 
+    if(eval_params->mem_softlimit_percent > 0) {
+        isolate->SetData(2, &eval_params->mem_softlimit_percent);
+        isolate->AddGCEpilogueCallback(gc_callback);
+    }
+    
 	MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
 	result->executed = !maybe_value.IsEmpty();
@@ -500,10 +521,16 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
 	eval_params.eval = &eval;
 	eval_params.result = &eval_result;
 	eval_params.timeout = 0;
+    eval_params.mem_softlimit_percent = 0;
 	VALUE timeout = rb_iv_get(self, "@timeout");
 	if (timeout != Qnil) {
 	    eval_params.timeout = (useconds_t)NUM2LONG(timeout);
 	}
+
+    VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
+    if (softlimit_percent != Qnil) {
+        eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
+    }
 
 	eval_result.message = NULL;
 	eval_result.backtrace = NULL;

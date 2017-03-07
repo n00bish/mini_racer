@@ -1,8 +1,10 @@
 require 'test_helper'
+require 'date'
+require 'securerandom'
 
 class MiniRacerTest < Minitest::Test
   # see `test_platform_set_flags_works` below
-  MiniRacer::Platform.set_flags! :use_strict
+  MiniRacer::Platform.set_flags! :use_strict, max_old_space_size: 50
 
   def test_segfault
     skip "running this test is very slow"
@@ -271,6 +273,13 @@ raise FooError, "I like foos"
     test_unknown = Date.new # hits T_DATA in convert_ruby_to_v8
     context.attach("test", proc{test_unknown})
     assert_equal("Undefined Conversion", context.eval("test()"))
+  end
+
+  def test_fatal_alloc
+    context = MiniRacer::Context.new(mem_softlimit_percent: 85)
+    context.attach("print", proc{|a| puts a})
+
+    assert_raises(MiniRacer::ScriptTerminatedError) { context.eval('var a = new Array(100000); while(true) {a = a.concat(a); print("loop " + a.length);}') }
   end
 
   module Echo

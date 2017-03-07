@@ -139,8 +139,10 @@ module MiniRacer
 
       @functions = {}
       @timeout = nil
+      @mem_softlimit_percent = nil
       @current_exception = nil
       @timeout = options[:timeout]
+      @mem_softlimit_percent = options[:mem_softlimit_percent]
       @isolate = options[:isolate] || Isolate.new(options[:snapshot])
 
       @callback_mutex = Mutex.new
