@@ -61,6 +61,7 @@ typedef struct {
     useconds_t timeout;
     EvalResult* result;
     int mem_softlimit_percent;
+    VALUE rb_context;
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
@@ -114,7 +115,9 @@ static void init_v8() {
 }
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
-    int percent = *(int*) isolate->GetData(2);
+    VALUE self = *(VALUE*) isolate->GetData(0);
+    int percent = *(int*) isolate->GetData(3);
+
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
     float percent_used = ((float)stats->used_heap_size()) / stats->total_heap_size() * 100.0f;
@@ -123,8 +126,13 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     fprintf(stderr, "percent from isolate data is %d\n", percent);
     if(percent_used > percent) {
         fprintf(stderr, "%s\n", "Trying to kill isolate execution");
+
+        // flag for termination
+        isolate->SetData(2, (void*)true);
+
         isolate->TerminateExecution();
-        rb_raise(rb_eScriptTerminatedError, "%s", "Script terminated after exceeding memory soft limit.");
+        rb_funcall(self, rb_intern("stop_attached"), 0);
+        // rb_raise(rb_eScriptTerminatedError, "%s", "Script terminated after exceeding memory soft limit.");
     }
 }
 
@@ -142,10 +150,12 @@ nogvl_context_eval(void* arg) {
     Local<Context> context = eval_params->context_info->context->Get(isolate);
     Context::Scope context_scope(context);
 
+    // Set ruby context
+    isolate->SetData(0, &eval_params->rb_context);
     // in gvl flag
-    isolate->SetData(0, (void*)false);
-    // terminate ASAP
     isolate->SetData(1, (void*)false);
+    // terminate ASAP
+    isolate->SetData(2, (void*)false);
 
     MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
     result->parsed = !parsed_script.IsEmpty();
@@ -159,10 +169,11 @@ nogvl_context_eval(void* arg) {
     } else {
 
     if(eval_params->mem_softlimit_percent > 0) {
-        isolate->SetData(2, &eval_params->mem_softlimit_percent);
+        isolate->SetData(3, &eval_params->mem_softlimit_percent);
+        
         isolate->AddGCEpilogueCallback(gc_callback);
     }
-    
+
 	MaybeLocal<Value> maybe_value = parsed_script.ToLocalChecked()->Run(context);
 
 	result->executed = !maybe_value.IsEmpty();
@@ -203,7 +214,7 @@ nogvl_context_eval(void* arg) {
 	}
     }
 
-    isolate->SetData(0, (void*)true);
+    isolate->SetData(1, (void*)true);
 
 
     return NULL;
@@ -522,6 +533,7 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
 	eval_params.result = &eval_result;
 	eval_params.timeout = 0;
     eval_params.mem_softlimit_percent = 0;
+    eval_params.rb_context = Qnil;
 	VALUE timeout = rb_iv_get(self, "@timeout");
 	if (timeout != Qnil) {
 	    eval_params.timeout = (useconds_t)NUM2LONG(timeout);
@@ -530,6 +542,7 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
     if (softlimit_percent != Qnil) {
         eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
+        eval_params.rb_context = self;
     }
 
 	eval_result.message = NULL;
@@ -665,7 +678,7 @@ gvl_ruby_callback(void* data) {
     callback_data.args = ruby_args;
     callback_data.failed = false;
 
-    if ((bool)args->GetIsolate()->GetData(1) == true) {
+    if ((bool)args->GetIsolate()->GetData(2) == true) {
 	args->GetIsolate()->ThrowException(String::NewFromUtf8(args->GetIsolate(), "Terminated execution during tansition from Ruby to JS"));
 	V8::TerminateExecution(args->GetIsolate());
 	return NULL;
@@ -689,7 +702,7 @@ gvl_ruby_callback(void* data) {
 	xfree(ruby_args);
     }
 
-    if ((bool)args->GetIsolate()->GetData(1) == true) {
+    if ((bool)args->GetIsolate()->GetData(2) == true) {
       Isolate* isolate = args->GetIsolate();
       V8::TerminateExecution(isolate);
     }
@@ -699,7 +712,7 @@ gvl_ruby_callback(void* data) {
 
 static void ruby_callback(const FunctionCallbackInfo<Value>& args) {
 
-    bool has_gvl = (bool)args.GetIsolate()->GetData(0);
+    bool has_gvl = (bool)args.GetIsolate()->GetData(1);
 
     if(has_gvl) {
 	gvl_ruby_callback((void*)&args);
@@ -893,7 +906,7 @@ rb_context_stop(VALUE self) {
     Isolate* isolate = context_info->isolate_info->isolate;
 
     // flag for termination
-    isolate->SetData(1, (void*)true);
+    isolate->SetData(2, (void*)true);
 
     V8::TerminateExecution(isolate);
     rb_funcall(self, rb_intern("stop_attached"), 0);
