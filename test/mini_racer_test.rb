@@ -4,6 +4,7 @@ require 'securerandom'
 
 class MiniRacerTest < Minitest::Test
   # see `test_platform_set_flags_works` below
+  # max_old_space_size added for memory softlimit test
   MiniRacer::Platform.set_flags! :use_strict, max_old_space_size: 50
 
   def test_segfault
