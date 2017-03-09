@@ -573,9 +573,10 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     if (!eval_result.executed) {
 	VALUE ruby_exception = rb_iv_get(self, "@current_exception");
 	if (ruby_exception == Qnil) {
+        bool mem_softlimit_reached = (bool)isolate->GetData(3);
         // If we were terminated or have the memory softlimit flag set
-        if(eval_result.terminated || (bool)isolate->GetData(3) == true) {
-            ruby_exception = (bool)isolate->GetData(3) == true ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
+        if(eval_result.terminated || mem_softlimit_reached) {
+            ruby_exception = mem_softlimit_reached ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
         } else {
             ruby_exception = rb_eScriptRuntimeError;
         }
