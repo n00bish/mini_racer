@@ -168,7 +168,6 @@ nogvl_context_eval(void* arg) {
 
     if(eval_params->mem_softlimit_percent > 0) {
         isolate->SetData(2, &eval_params->mem_softlimit_percent);
-        
         isolate->AddGCEpilogueCallback(gc_callback);
     }
 
@@ -203,6 +202,7 @@ nogvl_context_eval(void* arg) {
 		Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, (int)len).ToLocalChecked();
 		result->message->Reset(isolate, v8_message);
 	    } else if(trycatch.HasTerminated()) {
+
 
 		result->terminated = true;
 		result->message = new Persistent<Value>();
@@ -931,7 +931,7 @@ extern "C" {
 
 	VALUE rb_eEvalError = rb_define_class_under(rb_mMiniRacer, "EvalError", rb_eStandardError);
 	rb_eScriptTerminatedError = rb_define_class_under(rb_mMiniRacer, "ScriptTerminatedError", rb_eEvalError);
-    rb_eV8OutOfMemoryError = rb_define_class_under(rb_mMiniRacer, "V8OutOfMemoryError", rb_eEvalError);
+	rb_eV8OutOfMemoryError = rb_define_class_under(rb_mMiniRacer, "V8OutOfMemoryError", rb_eEvalError);
 	rb_eParseError = rb_define_class_under(rb_mMiniRacer, "ParseError", rb_eEvalError);
 	rb_eScriptRuntimeError = rb_define_class_under(rb_mMiniRacer, "RuntimeError", rb_eEvalError);
 	rb_cJavaScriptFunction = rb_define_class_under(rb_mMiniRacer, "JavaScriptFunction", rb_cObject);
