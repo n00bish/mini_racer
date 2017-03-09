@@ -6,6 +6,7 @@ module MiniRacer
 
   class EvalError < StandardError; end
   class ScriptTerminatedError < EvalError; end
+  class V8OutOfMemoryError < EvalError; end
   class ParseError < EvalError; end
   class SnapshotError < StandardError; end
   class PlatformAlreadyInitialized < StandardError; end

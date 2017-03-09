@@ -65,6 +65,7 @@ typedef struct {
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
+static VALUE rb_eV8OutOfMemoryError;
 static VALUE rb_eParseError;
 static VALUE rb_eScriptRuntimeError;
 static VALUE rb_cJavaScriptFunction;
@@ -115,8 +116,7 @@ static void init_v8() {
 }
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
-    VALUE self = *(VALUE*) isolate->GetData(0);
-    int percent = *(int*) isolate->GetData(3);
+    int percent = *(int*) isolate->GetData(2);
 
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
@@ -127,12 +127,9 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     if(percent_used > percent) {
         fprintf(stderr, "%s\n", "Trying to kill isolate execution");
 
-        // flag for termination
-        isolate->SetData(2, (void*)true);
-
         isolate->TerminateExecution();
-        rb_funcall(self, rb_intern("stop_attached"), 0);
-        // rb_raise(rb_eScriptTerminatedError, "%s", "Script terminated after exceeding memory soft limit.");
+        isolate->SetData(3, (void*)true);
+        isolate->ThrowException(String::NewFromUtf8(isolate, "Javascript was terminated due to excessive memory usage."));
     }
 }
 
@@ -150,12 +147,14 @@ nogvl_context_eval(void* arg) {
     Local<Context> context = eval_params->context_info->context->Get(isolate);
     Context::Scope context_scope(context);
 
-    // Set ruby context
-    isolate->SetData(0, &eval_params->rb_context);
     // in gvl flag
-    isolate->SetData(1, (void*)false);
+    isolate->SetData(0, (void*)false);
     // terminate ASAP
+    isolate->SetData(1, (void*)false);
+    // Memory softlimit percent
     isolate->SetData(2, (void*)false);
+    // Memory softlimit hit flag
+    isolate->SetData(3, (void*)false);
 
     MaybeLocal<Script> parsed_script = Script::Compile(context, *eval_params->eval);
     result->parsed = !parsed_script.IsEmpty();
@@ -169,7 +168,7 @@ nogvl_context_eval(void* arg) {
     } else {
 
     if(eval_params->mem_softlimit_percent > 0) {
-        isolate->SetData(3, &eval_params->mem_softlimit_percent);
+        isolate->SetData(2, &eval_params->mem_softlimit_percent);
         
         isolate->AddGCEpilogueCallback(gc_callback);
     }
@@ -187,6 +186,7 @@ nogvl_context_eval(void* arg) {
 
     if (!result->executed || !result->parsed) {
 	if (trycatch.HasCaught()) {
+        bool is_mem_softlimit = (bool)isolate->GetData(3);
 	    if (!trycatch.Exception()->IsNull()) {
 		result->message = new Persistent<Value>();
 		Local<Message> message = trycatch.Message();
@@ -197,10 +197,13 @@ nogvl_context_eval(void* arg) {
 				    message->GetLineNumber(),
 				    message->GetStartColumn());
 
+        if(is_mem_softlimit) {
+            result->terminated = true;
+        }
+
 		Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, (int)len).ToLocalChecked();
 		result->message->Reset(isolate, v8_message);
 	    } else if(trycatch.HasTerminated()) {
-
 
 		result->terminated = true;
 		result->message = new Persistent<Value>();
@@ -214,7 +217,7 @@ nogvl_context_eval(void* arg) {
 	}
     }
 
-    isolate->SetData(1, (void*)true);
+    isolate->SetData(0, (void*)true);
 
 
     return NULL;
@@ -578,7 +581,12 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     if (!eval_result.executed) {
 	VALUE ruby_exception = rb_iv_get(self, "@current_exception");
 	if (ruby_exception == Qnil) {
-	    ruby_exception = eval_result.terminated ? rb_eScriptTerminatedError : rb_eScriptRuntimeError;
+        if(eval_result.terminated) {
+            ruby_exception = (bool)isolate->GetData(3) == true ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
+        } else {
+            ruby_exception = rb_eScriptRuntimeError;
+        }
+
 	    // exception report about what happened
 	    if(TYPE(backtrace) == T_STRING) {
 		rb_raise(ruby_exception, "%s", RSTRING_PTR(backtrace));
@@ -678,7 +686,7 @@ gvl_ruby_callback(void* data) {
     callback_data.args = ruby_args;
     callback_data.failed = false;
 
-    if ((bool)args->GetIsolate()->GetData(2) == true) {
+    if ((bool)args->GetIsolate()->GetData(1) == true) {
 	args->GetIsolate()->ThrowException(String::NewFromUtf8(args->GetIsolate(), "Terminated execution during transition from Ruby to JS"));
 	V8::TerminateExecution(args->GetIsolate());
 	return NULL;
@@ -702,7 +710,7 @@ gvl_ruby_callback(void* data) {
 	xfree(ruby_args);
     }
 
-    if ((bool)args->GetIsolate()->GetData(2) == true) {
+    if ((bool)args->GetIsolate()->GetData(1) == true) {
       Isolate* isolate = args->GetIsolate();
       V8::TerminateExecution(isolate);
     }
@@ -712,7 +720,7 @@ gvl_ruby_callback(void* data) {
 
 static void ruby_callback(const FunctionCallbackInfo<Value>& args) {
 
-    bool has_gvl = (bool)args.GetIsolate()->GetData(1);
+    bool has_gvl = (bool)args.GetIsolate()->GetData(0);
 
     if(has_gvl) {
 	gvl_ruby_callback((void*)&args);
@@ -906,7 +914,7 @@ rb_context_stop(VALUE self) {
     Isolate* isolate = context_info->isolate_info->isolate;
 
     // flag for termination
-    isolate->SetData(2, (void*)true);
+    isolate->SetData(1, (void*)true);
 
     V8::TerminateExecution(isolate);
     rb_funcall(self, rb_intern("stop_attached"), 0);
@@ -926,6 +934,7 @@ extern "C" {
 
 	VALUE rb_eEvalError = rb_define_class_under(rb_mMiniRacer, "EvalError", rb_eStandardError);
 	rb_eScriptTerminatedError = rb_define_class_under(rb_mMiniRacer, "ScriptTerminatedError", rb_eEvalError);
+    rb_eV8OutOfMemoryError = rb_define_class_under(rb_mMiniRacer, "V8OutOfMemoryError", rb_eEvalError);
 	rb_eParseError = rb_define_class_under(rb_mMiniRacer, "ParseError", rb_eEvalError);
 	rb_eScriptRuntimeError = rb_define_class_under(rb_mMiniRacer, "RuntimeError", rb_eEvalError);
 	rb_cJavaScriptFunction = rb_define_class_under(rb_mMiniRacer, "JavaScriptFunction", rb_cObject);

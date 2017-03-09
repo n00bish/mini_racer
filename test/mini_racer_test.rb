@@ -279,7 +279,7 @@ raise FooError, "I like foos"
     context = MiniRacer::Context.new(mem_softlimit_percent: 50)
     context.attach("print", proc{|a| puts a})
 
-    assert_raises(MiniRacer::ScriptTerminatedError) { context.eval('var a = new Array(100000); while(true) {a = a.concat(a); print("loop " + a.length);}') }
+    assert_raises(MiniRacer::V8OutOfMemoryError) { context.eval('var a = new Array(100000); while(true) {a = a.concat(a); print("loop " + a.length);}') }
   end
 
   module Echo
