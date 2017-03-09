@@ -119,8 +119,8 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
 
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
-    float percent_used = ((float)stats->used_heap_size()) / stats->total_heap_size() * 100.0f;
-    fprintf(stderr, "gc callback called\nsize:\t\t%zd\nused:\t\t%zd\navail:\t\t%zd\npercent:\t%f.\n", stats->total_heap_size(), stats->used_heap_size(), stats->total_available_size(), percent_used);
+    float percent_used = ((float)stats->used_heap_size()) / stats->heap_size_limit() * 100.0f;
+    fprintf(stderr, "gc callback called\ntype:\t\t%d\nsize:\t\t%zd\nused:\t\t%zd\navail:\t\t%zd\nphys:\t\t%zd\nlimit:\t\t%zd\npercent:\t%f.\n", flags, stats->total_heap_size(), stats->used_heap_size(), stats->total_available_size(), stats->total_physical_size(), stats->heap_size_limit(), percent_used);
 
     fprintf(stderr, "percent from isolate data is %d\n", percent);
     if(percent_used > percent) {
@@ -184,7 +184,6 @@ nogvl_context_eval(void* arg) {
 
     if (!result->executed || !result->parsed) {
 	if (trycatch.HasCaught()) {
-        bool is_mem_softlimit = (bool)isolate->GetData(3);
 	    if (!trycatch.Exception()->IsNull()) {
 		result->message = new Persistent<Value>();
 		Local<Message> message = trycatch.Message();
@@ -194,10 +193,6 @@ nogvl_context_eval(void* arg) {
 			           *String::Utf8Value(message->GetScriptResourceName()->ToString()),
 				    message->GetLineNumber(),
 				    message->GetStartColumn());
-
-        if(is_mem_softlimit) {
-            result->terminated = true;
-        }
 
 		Local<String> v8_message = String::NewFromUtf8(isolate, buf, NewStringType::kNormal, (int)len).ToLocalChecked();
 		result->message->Reset(isolate, v8_message);
@@ -578,7 +573,8 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     if (!eval_result.executed) {
 	VALUE ruby_exception = rb_iv_get(self, "@current_exception");
 	if (ruby_exception == Qnil) {
-        if(eval_result.terminated) {
+        // If we were terminated or have the memory softlimit flag set
+        if(eval_result.terminated || (bool)isolate->GetData(3) == true) {
             ruby_exception = (bool)isolate->GetData(3) == true ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
         } else {
             ruby_exception = rb_eScriptRuntimeError;
