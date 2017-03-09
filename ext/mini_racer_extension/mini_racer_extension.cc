@@ -61,7 +61,6 @@ typedef struct {
     useconds_t timeout;
     EvalResult* result;
     int mem_softlimit_percent;
-    VALUE rb_context;
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
@@ -536,7 +535,6 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
 	eval_params.result = &eval_result;
 	eval_params.timeout = 0;
     eval_params.mem_softlimit_percent = 0;
-    eval_params.rb_context = Qnil;
 	VALUE timeout = rb_iv_get(self, "@timeout");
 	if (timeout != Qnil) {
 	    eval_params.timeout = (useconds_t)NUM2LONG(timeout);
@@ -545,7 +543,6 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
     if (softlimit_percent != Qnil) {
         eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
-        eval_params.rb_context = self;
     }
 
 	eval_result.message = NULL;
