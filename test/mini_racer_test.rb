@@ -277,7 +277,7 @@ raise FooError, "I like foos"
 
   def test_fatal_alloc
     context = MiniRacer::Context.new(mem_softlimit_percent: 50)
-    context.attach("print", proc{|a| puts a})
+    context.attach("print", proc{|a| a})
 
     assert_raises(MiniRacer::V8OutOfMemoryError) { context.eval('var a = new Array(10000); while(true) {a = a.concat(new Array(10000)); print("loop " + a.length);}') }
   end

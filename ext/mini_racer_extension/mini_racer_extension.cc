@@ -120,12 +120,8 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
     float percent_used = ((float)stats->used_heap_size()) / stats->heap_size_limit() * 100.0f;
-    fprintf(stderr, "gc callback called\ntype:\t\t%d\nsize:\t\t%zd\nused:\t\t%zd\navail:\t\t%zd\nphys:\t\t%zd\nlimit:\t\t%zd\npercent:\t%f.\n", flags, stats->total_heap_size(), stats->used_heap_size(), stats->total_available_size(), stats->total_physical_size(), stats->heap_size_limit(), percent_used);
 
-    fprintf(stderr, "percent from isolate data is %d\n", percent);
     if(percent_used > percent) {
-        fprintf(stderr, "%s\n", "Trying to kill isolate execution");
-
         isolate->TerminateExecution();
         isolate->SetData(3, (void*)true);
         isolate->ThrowException(String::NewFromUtf8(isolate, "Javascript was terminated due to excessive memory usage."));
