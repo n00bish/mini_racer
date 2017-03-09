@@ -4,7 +4,7 @@ require 'securerandom'
 
 class MiniRacerTest < Minitest::Test
   # see `test_platform_set_flags_works` below
-  MiniRacer::Platform.set_flags! :use_strict
+  MiniRacer::Platform.set_flags! :use_strict, max_old_space_size: 50
 
   def test_segfault
     skip "running this test is very slow"
