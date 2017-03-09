@@ -552,16 +552,16 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
 	eval_params.eval = &eval;
 	eval_params.result = &eval_result;
 	eval_params.timeout = 0;
-    eval_params.mem_softlimit_percent = 0;
+	eval_params.mem_softlimit_percent = 0;
 	VALUE timeout = rb_iv_get(self, "@timeout");
 	if (timeout != Qnil) {
 	    eval_params.timeout = (useconds_t)NUM2LONG(timeout);
 	}
 
-    VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
-    if (softlimit_percent != Qnil) {
-        eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
-    }
+	VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
+	if (softlimit_percent != Qnil) {
+    	eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
+	}
 
 	eval_result.message = NULL;
 	eval_result.backtrace = NULL;
@@ -596,13 +596,13 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
     if (!eval_result.executed) {
 	VALUE ruby_exception = rb_iv_get(self, "@current_exception");
 	if (ruby_exception == Qnil) {
-        bool mem_softlimit_reached = (bool)isolate->GetData(3);
-        // If we were terminated or have the memory softlimit flag set
-        if(eval_result.terminated || mem_softlimit_reached) {
-            ruby_exception = mem_softlimit_reached ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
-        } else {
-            ruby_exception = rb_eScriptRuntimeError;
-        }
+		bool mem_softlimit_reached = (bool)isolate->GetData(3);
+		// If we were terminated or have the memory softlimit flag set
+		if(eval_result.terminated || mem_softlimit_reached) {
+	    	ruby_exception = mem_softlimit_reached ? rb_eV8OutOfMemoryError : rb_eScriptTerminatedError;
+		} else {
+	    	ruby_exception = rb_eScriptRuntimeError;
+		}
 
 	    // exception report about what happened
 	    if(TYPE(backtrace) == T_STRING) {
