@@ -1,3 +1,5 @@
+require 'securerandom'
+require 'date'
 require 'test_helper'
 require 'date'
 require 'securerandom'
@@ -82,6 +84,14 @@ class MiniRacerTest < Minitest::Test
     assert_equal MiniRacer::ScriptTerminatedError, exp.class
     assert_match(/terminated/, exp.message)
 
+  end
+
+  def test_it_can_timeout_during_serialization
+    context = MiniRacer::Context.new(timeout: 500)
+
+    assert_raises(MiniRacer::ScriptTerminatedError) do
+      context.eval 'var a = {get a(){ while(true); }}; a'
+    end
   end
 
   def test_it_can_automatically_time_out_context
