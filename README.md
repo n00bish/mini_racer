@@ -68,6 +68,19 @@ context.eval 'while(true){}'
 # => exception is raised
 ```
 
+### Rich debugging with "filename" support
+
+```ruby
+
+context = MiniRacer::Context.new
+context.eval('var foo = function() {bar();}', filename: 'a/foo.js')
+context.eval('bar()', filename: 'a/bar.js')
+
+# MiniRacer::RuntimeError is raised containing the filenames you specified for evals in backtrace
+
+```
+
+
 ### Threadsafe
 
 Context usage is threadsafe
@@ -226,6 +239,39 @@ A list of all V8 runtime flags can be found using `node --v8-options`, or else b
 
 Note that runtime flags must be set before any other operation (e.g. creating a context, a snapshot or an isolate), otherwise an exception will be thrown.
 
+Flags:
+
+- :expose_gc : Will expose `gc()` which you can run in JavaScript to issue a gc
+- :max_old_space_size : defaults to 1400 (megs) on 64 bit, you can restric memory usage by limiting this.
+- **NOTE TO READER** our documentation could be awesome we could be properly documenting all the flags, they are hugely useful, if you feel like documenting a few more, PLEASE DO, PRs are welcome.
+
+## Controlling memory
+
+When hosting v8 you may want to keep track of memory usage, use #heap_stats to get memory usage:
+
+```ruby
+context = MiniRacer::Context.new(timeout: 5)
+context.eval("let a='testing';")
+p context.heap_stats
+# {:total_physical_size=>1280640,
+#  :total_heap_size_executable=>4194304,
+#  :total_heap_size=>3100672,
+#  :used_heap_size=>1205376,
+#  :heap_size_limit=>1501560832}
+```
+
+If you wish to dispose of a context before waiting on the GC use
+
+```ruby
+context = MiniRacer::Context.new(timeout: 5)
+context.eval("let a='testing';")
+context.dispose
+context.eval("a = 2")
+# MiniRacer::ContextDisposedError
+
+# nothing works on the context from now on, its a shell waiting to be disposed
+```
+
 ## Performance
 
 The `bench` folder contains benchmark.
@@ -302,14 +348,14 @@ Add this to your .travis.yml file:
 
 ## Similar Projects
 
-###therubyracer
+### therubyracer
 
 - https://github.com/cowboyd/therubyracer
 - Most comprehensive bridge available
 - Provides the ability to "eval" JavaScript
 - Provides the ability to invoke Ruby code from JavaScript
-- Hold refrences to JavaScript objects and methods in your Ruby code
-- Hold refrences to Ruby objects and methods in JavaScript code
+- Hold references to JavaScript objects and methods in your Ruby code
+- Hold references to Ruby objects and methods in JavaScript code
 - Uses libv8, so installation is fast
 - Supports timeouts for JavaScript execution
 - Does not release global interpreter lock, so performance is constrained to a single thread
@@ -317,7 +363,7 @@ Add this to your .travis.yml file:
 - Supports execjs
 
 
-###v8eval
+### v8eval
 
 - https://github.com/sony/v8eval
 - Provides the ability to "eval" JavaScript using the latest V8 engine
@@ -330,7 +376,7 @@ Add this to your .travis.yml file:
 - No support for execjs (can not be used with Rails uglifier and coffeescript gems)
 
 
-###therubyrhino
+### therubyrhino
 
 - https://github.com/cowboyd/therubyrhino
 - API compatible with therubyracer

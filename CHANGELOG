@@ -1,3 +1,25 @@
+18-07-2017
+
+- 0.1.12
+
+  - Feature: upgrade libv8 to 5.9
+  - Fix: warning when runnin with ruby warnings enabled (missed @disposed initialize)
+
+18-07-2017
+
+- 0.1.11
+
+  - Feature: upgrade libv8 to 5.7
+
+13-07-2017
+
+- 0.1.10
+
+ - Fix leak: memory leak when disposing a context (20 bytes per context)
+ - Feature: added #heap_stats so you can get visibility from context to actual memory usage of isolate
+ - Feature: added #dispose so you reclaim all v8 memory right away as opposed to waiting for GC
+ - Feature: you can now specify filename in an eval eg: eval('a = 1', filename: 'my_awesome.js')
+
 09-03-2017
 
 - 0.1.9
