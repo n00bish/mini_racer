@@ -1,12 +1,9 @@
 require 'securerandom'
 require 'date'
 require 'test_helper'
-require 'date'
-require 'securerandom'
 
 class MiniRacerTest < Minitest::Test
   # see `test_platform_set_flags_works` below
-  # max_old_space_size added for memory softlimit test
   MiniRacer::Platform.set_flags! :use_strict
 
   def test_segfault
