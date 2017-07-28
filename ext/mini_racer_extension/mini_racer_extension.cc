@@ -61,7 +61,7 @@ typedef struct {
     Local<String>* eval;
     useconds_t timeout;
     EvalResult* result;
-    int mem_softlimit_percent;
+    int max_memory;
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
@@ -117,13 +117,15 @@ static void init_v8() {
 }
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
-    int percent = *(int*) isolate->GetData(2);
+    int softlimit = *(int*) isolate->GetData(2);
 
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
-    float percent_used = ((float)stats->used_heap_size()) / stats->heap_size_limit() * 100.0f;
+    size_t used = stats->used_heap_size();
 
-    if(percent_used > percent) {
+    printf("gc callback called, softlimit is %d and used is %zd\n", softlimit, used);
+
+    if(used > softlimit) {
         isolate->TerminateExecution();
         isolate->SetData(3, (void*)true);
         isolate->ThrowException(String::NewFromUtf8(isolate, "Javascript was terminated due to excessive memory usage."));
@@ -147,7 +149,7 @@ nogvl_context_eval(void* arg) {
     isolate->SetData(0, (void*)false);
     // terminate ASAP
     isolate->SetData(1, (void*)false);
-    // Memory softlimit percent
+    // Memory softlimit
     isolate->SetData(2, (void*)false);
     // Memory softlimit hit flag
     isolate->SetData(3, (void*)false);
@@ -164,8 +166,8 @@ nogvl_context_eval(void* arg) {
 	result->message->Reset(isolate, trycatch.Exception());
     } else {
 
-    if(eval_params->mem_softlimit_percent > 0) {
-        isolate->SetData(2, &eval_params->mem_softlimit_percent);
+    if(eval_params->max_memory > 0) {
+        isolate->SetData(2, &eval_params->max_memory);
         isolate->AddGCEpilogueCallback(gc_callback);
     }
 
@@ -552,15 +554,15 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str) {
 	eval_params.eval = &eval;
 	eval_params.result = &eval_result;
 	eval_params.timeout = 0;
-	eval_params.mem_softlimit_percent = 0;
+	eval_params.max_memory = 0;
 	VALUE timeout = rb_iv_get(self, "@timeout");
 	if (timeout != Qnil) {
 	    eval_params.timeout = (useconds_t)NUM2LONG(timeout);
 	}
 
-	VALUE softlimit_percent = rb_iv_get(self, "@mem_softlimit_percent");
-	if (softlimit_percent != Qnil) {
-    	eval_params.mem_softlimit_percent = (int)NUM2INT(softlimit_percent);
+	VALUE mem_softlimit = rb_iv_get(self, "@max_memory");
+	if (mem_softlimit != Qnil) {
+    	eval_params.max_memory = (int)NUM2INT(mem_softlimit);
 	}
 
 	eval_result.message = NULL;
