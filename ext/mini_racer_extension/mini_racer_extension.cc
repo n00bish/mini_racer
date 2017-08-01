@@ -127,7 +127,7 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
 
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
-    size_t used = stats->used_heap_size();
+    long used = stats->used_heap_size();
 
     printf("gc callback called, softlimit is %d and used is %zd\n", softlimit, used);
 
