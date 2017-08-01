@@ -67,7 +67,7 @@ typedef struct {
     Local<String>* filename;
     useconds_t timeout;
     EvalResult* result;
-    int max_memory;
+    long max_memory;
 } EvalParams;
 
 static VALUE rb_eScriptTerminatedError;
@@ -123,18 +123,19 @@ static void init_v8() {
 }
 
 static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
-    int softlimit = *(int*) isolate->GetData(2);
+    if((bool)isolate->GetData(3)) return;
+
+    long softlimit = *(long*) isolate->GetData(2);
 
     HeapStatistics* stats = new HeapStatistics();
     isolate->GetHeapStatistics(stats);
     long used = stats->used_heap_size();
 
-    printf("gc callback called, softlimit is %d and used is %zd\n", softlimit, used);
+    printf("gc callback called, softlimit is %ld and used is %ld\n", softlimit, used);
 
     if(used > softlimit) {
-        isolate->TerminateExecution();
         isolate->SetData(3, (void*)true);
-        isolate->ThrowException(String::NewFromUtf8(isolate, "Javascript was terminated due to excessive memory usage."));
+        V8::TerminateExecution(isolate);
     }
 }
 
@@ -590,7 +591,7 @@ static VALUE rb_context_eval_unsafe(VALUE self, VALUE str, VALUE filename) {
 
 	VALUE mem_softlimit = rb_iv_get(self, "@max_memory");
 	if (mem_softlimit != Qnil) {
-    	eval_params.max_memory = (int)NUM2INT(mem_softlimit);
+    	eval_params.max_memory = (long)NUM2LONG(mem_softlimit);
 	}
 
 	eval_result.message = NULL;
