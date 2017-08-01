@@ -131,8 +131,6 @@ static void gc_callback(Isolate *isolate, GCType type, GCCallbackFlags flags) {
     isolate->GetHeapStatistics(stats);
     long used = stats->used_heap_size();
 
-    printf("gc callback called, softlimit is %ld and used is %ld\n", softlimit, used);
-
     if(used > softlimit) {
         isolate->SetData(3, (void*)true);
         V8::TerminateExecution(isolate);
